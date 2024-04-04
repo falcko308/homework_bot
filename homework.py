@@ -33,16 +33,19 @@ def check_tokens():
     tokens = (
         (PRACTICUM_TOKEN, 'TOKEN_PRACTICUM'),
         (TELEGRAM_TOKEN, 'TOKEN_TELEGRAM'),
-        (TELEGRAM_CHAT_ID, 'CHAT_ID')
+        (TELEGRAM_CHAT_ID, 'CHAT_ID'),
     )
-    for token in tokens:
-        if not token[0]:
+    have_token = True
+    for name, token in tokens:
+        if not name:
+            have_token = False
             logging.critical(
-                f'Отсутствует обязательная переменная: {token[1]}.'
+                f'Отсутствует обязательная переменная: {token}.'
             )
-            sys.exit('Отсутствует одна из переменных окружения')
-        return False
-    return True
+    if have_token is False:
+        raise exception.ProgramFailure(
+            f'Отсутствуют обязательные переменные: {token}.'
+        )
 
 
 def send_message(bot, message):
@@ -68,13 +71,15 @@ def get_api_answer(timestamp):
                  'Время: {params} сек.'.format(**param_dict))
     try:
         response = requests.get(**param_dict)
-    except Exception:
+    except requests.exceptions.RequestException:
         text = ('Ссылка {url}, Заголовки: {headers}, '
                 'Время: {params} недоступены')
-        logging.error(text.format(**param_dict))
         raise ConnectionError(text.format(**param_dict))
     if response.status_code != HTTPStatus.OK:
-        raise exception.InvalidResponseCode()
+        raise exception.InvalidResponseCode(
+            f'Код ответа API: {response.status_code},'
+            f'причина {response.reason}, страница недоступна'
+        )
     return response.json()
 
 
@@ -96,14 +101,10 @@ def parse_status(homework):
         homework_name = homework['homework_name']
         status = homework['status']
     except KeyError as error:
-        logging.error(
-            f'Ключ {error} отсутствует в информации о домашней работе'
-        )
         raise KeyError(
             f'Ключ {error} отсутствует в информации о домашней работе'
         )
     if status not in HOMEWORK_VERDICTS:
-        logging.error('Неизвестный статус домашней работы')
         raise Exception('Неизвестный статус домашней работы')
     else:
         verdict = HOMEWORK_VERDICTS[status]
@@ -120,29 +121,24 @@ def main():
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
 
-    current_report = ''
     prev_report = ''
 
     while True:
         try:
             response = get_api_answer(timestamp)
             homework = check_response(response)
-            if len(homework) == 0:
+            if not homework:
                 logging.debug('Задания отсутствуют!')
                 continue
             message = parse_status(homework[0])
-            if message != prev_report:
-                send_message(bot, message)
+            if message != prev_report and send_message(bot, message):
+                timestamp = response.get(timestamp)
                 prev_report = message
-        except exception.SendTelegramError as error:
-            message = f'Сбой в работе программы: {error}'
-            logging.error(message)
         except Exception as error:
             message = f'Произошёл сбой в программе: {error}'
             logging.error(message)
-            if message != current_report:
-                send_message(bot, message)
-                current_report = message
+            if message != prev_report and send_message(bot, message):
+                prev_report = message
         finally:
             time.sleep(RETRY_PERIOD)
 
