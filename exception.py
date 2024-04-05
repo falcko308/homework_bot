@@ -4,7 +4,3 @@ class InvalidResponseCode(Exception):
 
 class ProgramFailure(Exception):
     pass
-
-
-class SendTelegramError(Exception):
-    pass

@@ -36,15 +36,15 @@ def check_tokens():
         (TELEGRAM_CHAT_ID, 'CHAT_ID'),
     )
     have_token = True
-    for name, token in tokens:
-        if not name:
+    for token, name in tokens:
+        if not token:
             have_token = False
             logging.critical(
-                f'Отсутствует обязательная переменная: {token}.'
+                f'Отсутствует обязательная переменная: {name}.'
             )
     if have_token is False:
         raise exception.ProgramFailure(
-            f'Отсутствуют обязательные переменные: {token}.'
+            f'Отсутствуют обязательные переменные: {name}.'
         )
 
 
@@ -132,8 +132,9 @@ def main():
                 continue
             message = parse_status(homework[0])
             if message != prev_report and send_message(bot, message):
-                timestamp = response.get(timestamp)
+                timestamp = response.get('current_time', timestamp)
                 prev_report = message
+                logging.info(f'{message}')
         except Exception as error:
             message = f'Произошёл сбой в программе: {error}'
             logging.error(message)
